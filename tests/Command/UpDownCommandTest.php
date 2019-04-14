@@ -11,9 +11,9 @@ namespace Command;
 use Migrate\Command\DownCommand;
 use Migrate\Command\StatusCommand;
 use Migrate\Command\UpCommand;
+use Migrate\Manager;
 use Migrate\Test\Command\AbstractCommandTester;
 use Migrate\Utils\InputStreamUtil;
-use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -31,7 +31,7 @@ class UpDownCommandTest extends AbstractCommandTester
         $this->createMigration('1', "SELECT 1",                                         "DELETE FROM test WHERE id = 1;");
         $this->createMigration('2', "INSERT INTO test VALUES (2, 'two');",              "DELETE FROM test WHERE id = 2;");
 
-        self::$application = new Application();
+        self::$application = new Manager(self::$workingPath);
         self::$application->add(new UpCommand());
         self::$application->add(new DownCommand());
         self::$application->add(new StatusCommand());

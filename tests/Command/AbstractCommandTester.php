@@ -9,9 +9,8 @@ namespace Migrate\Test\Command;
 
 use Migrate\Command\AddEnvCommand;
 use Migrate\Command\InitCommand;
-use Migrate\Enum\Directory;
+use Migrate\Manager;
 use Migrate\Utils\InputStreamUtil;
-use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -24,20 +23,25 @@ class AbstractCommandTester extends \PHPUnit_Framework_TestCase
     public static $password = 'aguidet';
     public static $host = 'localhost';
     public static $port = '5432';
+    public static $workingPath = 'php_db_migration';
+
+    private $migrationPath;
 
     public function cleanEnv()
     {
-        exec("rm -rf .php-database-migration");
+        exec('rm -rf ./' . self::$workingPath);
 
         if (file_exists('test.sqlite')) {
-            exec("rm test.sqlite");
+            exec('rm test.sqlite');
         }
     }
 
     public function createEnv($format = 'yml')
     {
-        $application = new Application();
+        $application = new Manager(self::$workingPath);
         $application->add(new AddEnvCommand());
+
+        $this->migrationPath = $application->getMigrationsPath();
 
         $command = $application->find('migrate:addenv');
         $commandTester = new CommandTester($command);
@@ -54,7 +58,7 @@ class AbstractCommandTester extends \PHPUnit_Framework_TestCase
 
     public function initEnv()
     {
-        $application = new Application();
+        $application = new Manager(self::$workingPath);
         $application->add(new InitCommand());
 
         $command = $application->find('migrate:init');
@@ -68,7 +72,7 @@ class AbstractCommandTester extends \PHPUnit_Framework_TestCase
 
     public function createMigration($timestamp, $sqlUp, $sqlDown)
     {
-        $filename = Directory::getMigrationsPath() . '/' . $timestamp . '_migration.sql';
+        $filename = $this->migrationPath . '/' . $timestamp . '_migration.sql';
 
         $content =<<<SQL
 --// unit testing migration

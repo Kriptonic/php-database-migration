@@ -12,20 +12,5 @@ if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
     require_once __DIR__ . '/../../../autoload.php';
 }
 
-use Symfony\Component\Console\Application;
-use Migrate\Command\InitCommand;
-use Migrate\Command\CreateCommand;
-use Migrate\Command\DownCommand;
-use Migrate\Command\UpCommand;
-use Migrate\Command\AddEnvCommand;
-use Migrate\Command\StatusCommand;
-
-$application = new Application();
-//$application->add(new InitCommand());
-$application->add(new CreateCommand());
-$application->add(new DownCommand());
-$application->add(new UpCommand());
-$application->add(new AddEnvCommand());
-$application->add(new StatusCommand());
-$application->add(new InitCommand());
+$application = new Migrate\Manager();
 $application->run();
