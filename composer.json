@@ -1,10 +1,8 @@
 {
-  "name": "alwex/php-database-migration",
-  "description": "rake and mybatis SQL migration tool",
-  "homepage": "https://github.com/alwex/php-database-migration",
+  "name": "kriptonic/php-database-migration",
+  "description": "PHP Migrations Made Easy",
+  "homepage": "https://github.com/Kriptonic/php-database-migration",
   "keywords": [
-    "rake",
-    "mybatis",
     "migration",
     "sql"
   ],
@@ -12,8 +10,8 @@
   "license": "MIT",
   "authors": [
     {
-      "name": "GUIDET Alexandre",
-      "email": "alwex@free.fr"
+      "name": "Christopher Sharman",
+      "email": "christopher.p.sharman@gmail.com"
     }
   ],
   "require": {
@@ -22,7 +20,8 @@
     "symfony/process": "~2.6|~3.0",
     "symfony/config": "~2.6|~3.0",
     "cocur/slugify": "~1.0",
-    "symfony/yaml": "~2.6|~3.0"
+    "symfony/yaml": "~2.6|~3.0",
+    "ext-pdo": "*"
   },
   "require-dev": {
     "phpunit/phpunit": "*",
