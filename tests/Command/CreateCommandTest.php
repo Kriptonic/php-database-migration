@@ -9,9 +9,9 @@
 namespace Migrate\Command;
 
 
+use Migrate\Manager;
 use Migrate\Test\Command\AbstractCommandTester;
 use Migrate\Utils\InputStreamUtil;
-use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -34,7 +34,7 @@ class CreateCommandTest extends AbstractCommandTester
 
     public function testExecute()
     {
-        $application = new Application();
+        $application = new Manager(self::$workingPath);
         $application->add(new CreateCommand());
 
         $command = $application->find('migrate:create');
@@ -46,7 +46,9 @@ class CreateCommandTest extends AbstractCommandTester
         $commandTester->execute(array('command' => $command->getName()));
 
         $matches = array();
-        preg_match('/.*: (.*) created/', $commandTester->getDisplay(), $matches);
+        $display = $commandTester->getDisplay();
+
+        preg_match('/.*: (.*) created/', $display, $matches);
 
         $fileName = $matches[1];
 

@@ -7,12 +7,11 @@
 
 namespace Migrate\Command;
 
-use Migrate\Enum\Directory;
+use Migrate\Manager;
+use Migrate\Test\Command\AbstractCommandTester;
 use Migrate\Utils\InputStreamUtil;
-use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Tester\CommandTester;
-use Migrate\Test\Command\AbstractCommandTester;
 
 class AddenvCommandTest extends AbstractCommandTester
 {
@@ -28,7 +27,7 @@ class AddenvCommandTest extends AbstractCommandTester
 
     public function testExecute()
     {
-        $application = new Application();
+        $application = new Manager(self::$workingPath);
         $application->add(new AddEnvCommand());
 
         $command = $application->find('migrate:addenv');
@@ -52,7 +51,7 @@ class AddenvCommandTest extends AbstractCommandTester
         
         $this->assertRegExp('/Please enter the name of the new environment/', $commandTester->getDisplay());
 
-        $envDir = Directory::getEnvPath();
+        $envDir = $application->getEnvPath();
 
         $expected = <<<EXPECTED
 connection:

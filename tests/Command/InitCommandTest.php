@@ -9,8 +9,8 @@
 namespace Migrate\Command;
 
 
+use Migrate\Manager;
 use Migrate\Test\Command\AbstractCommandTester;
-use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 
 class InitCommandTest extends AbstractCommandTester
@@ -28,7 +28,7 @@ class InitCommandTest extends AbstractCommandTester
 
     public function testExecute()
     {
-        $application = new Application();
+        $application = new Manager(self::$workingPath);
         $application->add(new InitCommand());
 
         $command = $application->find('migrate:init');

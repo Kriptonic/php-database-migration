@@ -7,22 +7,28 @@
 
 namespace Migrate\Command;
 
+use Migrate\Manager;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
 
 class AbstractCommand extends Command
 {
-
+    /** @var Manager */
+    protected $manager;
     protected $mainDir;
     protected $environmentDir;
     protected $migrationDir;
 
-    public function __construct()
+    protected function initialize(InputInterface $input, OutputInterface $output)
     {
-        $this->mainDir = getcwd() . '/.php-database-migration';
-        $this->environmentDir = $this->mainDir . '/environments';
-        $this->migrationDir = $this->mainDir . '/migrations';
+        $this->manager = $this->getApplication();
 
-        parent::__construct();
+        if (!$this->manager instanceof Manager) {
+            throw new \RuntimeException('This command can only be run from the Migrate\Manager application');
+        }
+
+        $this->mainDir = $this->manager->getWorkingPath() . '/';
     }
 
     /**
@@ -38,7 +44,7 @@ class AbstractCommand extends Command
      */
     public function getMigrationDir()
     {
-        return $this->migrationDir;
+        return $this->manager->getMigrationsPath();
     }
 
     /**
@@ -46,6 +52,6 @@ class AbstractCommand extends Command
      */
     public function getEnvironmentDir()
     {
-        return $this->environmentDir;
+        return $this->manager->getEnvPath();
     }
 }
