@@ -1,64 +1,120 @@
 <?php
-/**
- * User: aguidet
- * Date: 02/03/15
- * Time: 15:19
- */
 
 namespace Migrate\Test\Command;
 
-use Migrate\Command\AddEnvCommand;
+use Migrate\Command\CreateDatabaseCommand;
+use Migrate\Command\CreateEnvironmentCommand;
 use Migrate\Command\InitCommand;
 use Migrate\Manager;
 use Migrate\Utils\InputStreamUtil;
-use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Tester\CommandTester;
 
-class AbstractCommandTester extends \PHPUnit_Framework_TestCase
+/**
+ * Class AbstractCommandTester
+ *
+ * @package Migrate\Test\Command
+ *
+ * @author https://github.com/alwex
+ * @author Christopher Sharman <christopher.p.sharman@gmail.com>
+ */
+abstract class AbstractCommandTester extends \PHPUnit_Framework_TestCase
 {
-    public static $env = 'testing';
-    public static $driver = 'sqlite';
-    public static $bddName = 'migrate_test';
-    public static $username = 'aguidet';
-    public static $password = 'aguidet';
-    public static $host = 'localhost';
-    public static $port = '5432';
-    public static $workingPath = 'php_db_migration';
+    /**
+     * @var array Default testing database configuration.
+     */
+    public static $testDatabaseConfig = array(
+        'driver' => 'sqlite',
+        'database' => 'test.sqlite',
+        'host' => null,
+        'port' => null,
+        'charset' => null,
+        'username' => null,
+        'password' => null,
+        'path' => 'test.sqlite',
+    );
 
-    private $migrationPath;
+    /**
+     * @var array Default testing Manager configuration.
+     */
+    public static $testManagerConfig = array(
+        'working_path' => 'php_db_migration'
+    );
 
-    public function cleanEnv()
+    /**
+     * Clean the environment by removing the files created by tests.
+     */
+    public function cleanEnvironment()
     {
-        exec('rm -rf ./' . self::$workingPath);
+        exec('rm -rf ./' . self::$testManagerConfig['working_path']);
 
         if (file_exists('test.sqlite')) {
             exec('rm test.sqlite');
         }
     }
 
-    public function createEnv($format = 'yml')
+    /**
+     * Create the test environment and database configuration.
+     *
+     * @param string $environmentName The name of the environment.
+     */
+    public function createEnvironmentAndDatabaseConfiguration($environmentName = 'testing')
     {
-        $application = new Manager(self::$workingPath);
-        $application->add(new AddEnvCommand());
-
-        $this->migrationPath = $application->getMigrationsPath();
-
-        $command = $application->find('migrate:addenv');
-        $commandTester = new CommandTester($command);
-
-        $pdoDrivers = pdo_drivers();
-        $driverKey = array_search('sqlite', $pdoDrivers);
-
-        /* @var $question QuestionHelper */
-        $question = $command->getHelper('question');
-        $question->setInputStream(InputStreamUtil::type("testing\n$driverKey\ntest.sqlite\n\n\n\n\n\nchangelog\nvim\n"));
-
-        $commandTester->execute(array('command' => $command->getName(), 'format' => $format));
+        $this->createEnvironmentConfiguration($environmentName);
+        $this->createDatabaseConfiguration($environmentName);
     }
 
-    public function initEnv()
+    /**
+     * Create the test environment configuration.
+     *
+     * @param string $environmentName The environment name.
+     */
+    public function createEnvironmentConfiguration($environmentName = 'testing')
     {
-        $application = new Manager(self::$workingPath);
+        $application = new Manager(self::$testManagerConfig);
+        $application->add(new CreateEnvironmentCommand());
+
+        $envCommand = $application->find('create:env');
+        $envCommandTester = new CommandTester($envCommand);
+        $envCommandTester->execute(array(
+            'command' => $envCommand->getName(),
+            'name' => $environmentName
+        ));
+    }
+
+    /**
+     * Create the test database configuration.
+     *
+     * @param string $environmentName The target environment name.
+     */
+    private function createDatabaseConfiguration($environmentName = 'testing')
+    {
+        $application = new Manager(self::$testManagerConfig);
+        $application->add(new CreateDatabaseCommand());
+
+        // Create the input stream required to setup the database we need.
+        $inputStream = InputStreamUtil::fromArray(array(
+            static::$testDatabaseConfig['driver'],
+            static::$testDatabaseConfig['database'],
+            '', // Changelog table name (use default)
+            '', // Connection name (use default)
+            '', // Migration path (use default)
+        ));
+
+        $dbCommand = $application->find('create:db');
+        $dbCommand->getHelper('question')->setInputStream($inputStream);
+        $dbCommandTester = new CommandTester($dbCommand);
+        $dbCommandTester->execute(array(
+            'command' => $dbCommand->getName(),
+            'env' => $environmentName
+        ));
+    }
+
+    /**
+     * Initialise the database.
+     */
+    public function initialiseEnvironmentDatabase()
+    {
+        $application = new Manager(self::$testManagerConfig);
         $application->add(new InitCommand());
 
         $command = $application->find('migrate:init');
@@ -66,13 +122,22 @@ class AbstractCommandTester extends \PHPUnit_Framework_TestCase
 
         $commandTester->execute(array(
             'command' => $command->getName(),
-            'env' => 'testing'
+            'env' => 'testing',
+            'db' => static::$testDatabaseConfig['database']
         ));
     }
 
-    public function createMigration($timestamp, $sqlUp, $sqlDown)
+    /**
+     * Create a migration file.
+     *
+     * @param string $path Path to the migrations folder.
+     * @param int $timestamp The migration creation timestamp.
+     * @param string $sqlUp The SQL to run when migrating up.
+     * @param string $sqlDown The SQL to run when migrating down.
+     */
+    public function createMigration($path, $timestamp, $sqlUp, $sqlDown)
     {
-        $filename = $this->migrationPath . '/' . $timestamp . '_migration.sql';
+        $filename = $path . '/' . static::$testDatabaseConfig['path'] . '/' . $timestamp . '_migration.sql';
 
         $content =<<<SQL
 --// unit testing migration

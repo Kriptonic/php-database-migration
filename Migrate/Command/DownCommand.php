@@ -1,9 +1,4 @@
 <?php
-/**
- * User: aguidet
- * Date: 27/02/15
- * Time: 17:14
- */
 
 namespace Migrate\Command;
 
@@ -14,9 +9,19 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\Question;
 
+/**
+ * Class DownCommand
+ *
+ * @package Migrate\Command
+ *
+ * @author https://github.com/alwex
+ * @author Christopher Sharman <chrstopher.p.sharman@gmail.com>
+ */
 class DownCommand extends AbstractEnvCommand
 {
-
+    /**
+     * Configure the command.
+     */
     protected function configure()
     {
         $this
@@ -26,6 +31,11 @@ class DownCommand extends AbstractEnvCommand
                 'env',
                 InputArgument::REQUIRED,
                 'Environment'
+            )
+            ->addArgument(
+                'db',
+                InputArgument::REQUIRED,
+                'Database'
             )
             ->addOption(
                 'to',
@@ -54,11 +64,11 @@ class DownCommand extends AbstractEnvCommand
         $this->init($input, $output);
 
         $changeLogOnly = (bool) $input->getOption('changelog-only');
-        /* @var $questions QuestionHelper */
-        $questions = $this->getHelperSet()->get('question');
+
+        $question = $this->getHelper('question');
 
         $areYouSureQuestion = new Question("Are you sure? <info>(yes/no)</info> <comment>[no]</comment>: ", 'no');
-        $areYouSure = $questions->ask($input, $output, $areYouSureQuestion);
+        $areYouSure = $question->ask($input, $output, $areYouSureQuestion);
 
         if ($areYouSure == 'yes') {
             $toExecute = $this->filterMigrationsToExecute($input, $output);

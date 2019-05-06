@@ -1,9 +1,4 @@
 <?php
-/**
- * User: aguidet
- * Date: 27/02/15
- * Time: 17:13
- */
 
 namespace Migrate\Command;
 
@@ -11,6 +6,14 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
+/**
+ * Class InitCommand
+ *
+ * @package Migrate\Command
+ *
+ * @author https://github.com/alwex
+ * @author Christopher Sharman <chrstopher.p.sharman@gmail.com>
+ */
 class InitCommand extends AbstractEnvCommand
 {
 
@@ -23,6 +26,11 @@ class InitCommand extends AbstractEnvCommand
                 'env',
                 InputArgument::REQUIRED,
                 'Environment'
+            )
+            ->addArgument(
+                'db',
+                InputArgument::REQUIRED,
+                'Database'
             );
     }
 
@@ -32,17 +40,15 @@ class InitCommand extends AbstractEnvCommand
 
         $changelog = $this->getChangelogTable();
 
-        $this->getDb()->exec(
-            "
-            CREATE table $changelog
+        $this->getDb()->exec("
+            CREATE TABLE $changelog
             (
-                id numeric(20,0),
-                applied_at character varying(25),
-                version character varying(25),
-                description character varying(255)
+                id NUMERIC(20,0),
+                applied_at CHARACTER VARYING(25),
+                version CHARACTER VARYING(25),
+                description CHARACTER VARYING(255)
             )
-        "
-        );
+        ");
 
         $output->writeln("changelog table ($changelog) successfully created");
     }
