@@ -1,16 +1,18 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: aguidet
- * Date: 28/02/15
- * Time: 18:54
- */
 
 namespace Migrate;
 
 use Cocur\Slugify\Slugify;
 use Migrate\Utils\ArrayUtil;
 
+/**
+ * Class Migration
+ *
+ * @package Migrate
+ *
+ * @author https://github.com/alwex
+ * @author Christopher Sharman <chrstopher.p.sharman@gmail.com>
+ */
 class Migration
 {
     private $id;
@@ -133,6 +135,13 @@ class Migration
         $this->sqlDown = $sqlDown;
     }
 
+    /**
+     * Create a migration object from a file.
+     *
+     * @param string $filename The name of the migration file to use.
+     * @param string $migrationDir The path to the migration files.
+     * @return Migration The created Migration object.
+     */
     public static function createFromFile($filename, $migrationDir)
     {
         $data = explode('_', $filename);
@@ -143,11 +152,20 @@ class Migration
         $migration->setVersion(null);
         $migration->setDescription(str_replace('.sql', '', str_replace('-', ' ', $data[1])));
         $migration->setFile($filename);
+
+        // Retrieve the up and down SQL content from the migration file.
         $migration->load($migrationDir);
 
         return $migration;
     }
 
+    /**
+     * Create a migration object from an array.
+     *
+     * @param array $data Migration data.
+     * @param string $migrationDir The path to the migration folder.
+     * @return Migration|null The Migration object if created successfully; null otherwise.
+     */
     public static function createFromRow(array $data, $migrationDir)
     {
         $migration = new self();
@@ -160,11 +178,22 @@ class Migration
         $filename = $migration->getId() . '_' . $slugger->slugify($migration->getDescription()) . '.sql';
         $migration->setFile($filename);
 
+        // TODO: Add better error handling for these cases - this would likely be a normal occurrence when working in
+        //       a multi-user version-controlled environment.
+        if (!file_exists($migrationDir . '/' . $filename)) {
+            return null;
+        }
+
         $migration->load($migrationDir);
 
         return $migration;
     }
 
+    /**
+     * Convert to the migration object to an array.
+     *
+     * @return array An array representation of this migration object.
+     */
     public function toArray()
     {
         return array(
@@ -175,6 +204,11 @@ class Migration
         );
     }
 
+    /**
+     * Load the up and down SQL from the migration file.
+     *
+     * @param string $migrationDir Path to the migrations folder.
+     */
     public function load($migrationDir)
     {
         $content = file_get_contents($migrationDir . '/' . $this->getFile());
