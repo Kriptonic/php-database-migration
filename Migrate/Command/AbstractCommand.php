@@ -12,46 +12,27 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class AbstractCommand extends Command
+/**
+ * Class AbstractCommand
+ *
+ * @package Migrate\Command
+ * @author Christopher Sharman <christopher.p.sharman@gmail.com>
+ */
+abstract class AbstractCommand extends Command
 {
     /** @var Manager */
     protected $manager;
-    protected $mainDir;
-    protected $environmentDir;
-    protected $migrationDir;
 
     protected function initialize(InputInterface $input, OutputInterface $output)
     {
-        $this->manager = $this->getApplication();
+        $application = $this->getApplication();
 
-        if (!$this->manager instanceof Manager) {
+        // Verify that the application is a Manager - the commands cannot work without it.
+        if (!$application instanceof Manager) {
             throw new \RuntimeException('This command can only be run from the Migrate\Manager application');
         }
 
-        $this->mainDir = $this->manager->getWorkingPath() . '/';
-    }
-
-    /**
-     * @return string
-     */
-    public function getMainDir()
-    {
-        return $this->mainDir;
-    }
-
-    /**
-     * @return string
-     */
-    public function getMigrationDir()
-    {
-        return $this->manager->getMigrationsPath();
-    }
-
-    /**
-     * @return string
-     */
-    public function getEnvironmentDir()
-    {
-        return $this->manager->getEnvPath();
+        // Since most commands will need to use the Manager, we make it available here.
+        $this->manager = $application;
     }
 }

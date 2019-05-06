@@ -1,34 +1,35 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: aguidet
- * Date: 01/03/15
- * Time: 01:47
- */
 
 namespace Migrate\Command;
-
 
 use Migrate\Manager;
 use Migrate\Test\Command\AbstractCommandTester;
 use Symfony\Component\Console\Tester\CommandTester;
 
+/**
+ * Class InitCommandTest
+ *
+ * @package Migrate\Command
+ *
+ * @author https://github.com/alwex
+ * @author Christopher Sharman <chrstopher.p.sharman@gmail.com>
+ */
 class InitCommandTest extends AbstractCommandTester
 {
     public function setUp()
     {
-        $this->cleanEnv();
-        $this->createEnv();
+        $this->cleanEnvironment();
+        $this->createEnvironmentAndDatabaseConfiguration();
     }
 
     public function tearDown()
     {
-        $this->cleanEnv();
+        $this->cleanEnvironment();
     }
 
     public function testExecute()
     {
-        $application = new Manager(self::$workingPath);
+        $application = new Manager(self::$testManagerConfig);
         $application->add(new InitCommand());
 
         $command = $application->find('migrate:init');
@@ -36,7 +37,8 @@ class InitCommandTest extends AbstractCommandTester
 
         $commandTester->execute(array(
             'command' => $command->getName(),
-            'env' => 'testing'
+            'env' => 'testing',
+            'db' => static::$testDatabaseConfig['database']
         ));
 
         $expected = "connected\nchangelog table (changelog) successfully created\n";

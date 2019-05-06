@@ -1,36 +1,43 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: aguidet
- * Date: 28/02/15
- * Time: 17:32
- */
 
 namespace Migrate\Command;
 
-use Migrate\Config\ConfigLocator;
+use Migrate\Config\ConfigHandlers\PhpConfigHandler;
+use Migrate\Manager;
 use Migrate\Migration;
 use Migrate\Utils\ArrayUtil;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class AbstractEnvCommand extends AbstractCommand
+/**
+ * Class AbstractEnvCommand
+ *
+ * @package Migrate\Command
+ *
+ * @author https://github.com/alwex
+ * @author Christopher Sharman <chrstopher.p.sharman@gmail.com>
+ */
+abstract class AbstractEnvCommand extends AbstractCommand
 {
-
+    /**
+     * @var string The migrating database progress bar.
+     */
     protected static $progressBarFormat = '%current%/%max% [%bar%] %percent% % [%message%]';
 
     /**
-     * @var \PDO
+     * @var \PDO Database connection.
      */
     private $db;
 
     /**
      * @var array
      */
-    private $config;
+    private $dbConfig;
 
     /**
-     * @return \PDO
+     * Get the configured PDO object.
+     *
+     * @return \PDO The configured PDO object.
      */
     public function getDb()
     {
@@ -38,47 +45,88 @@ class AbstractEnvCommand extends AbstractCommand
     }
 
     /**
-     * @return array
+     * Get the entire database configuration or a key from it, if specified.
+     *
+     * @param string|null $key The key to receive from the database configuration; or null for all keys.
+     * @return array|string An array of all values if $key was null; otherwise value of the provided $key.
      */
-    public function getConfig()
+    public function getDatabaseConfig($key = null)
     {
-        return $this->config;
+        if ($key !== null) {
+            return $this->dbConfig[$key];
+        }
+
+        return $this->dbConfig;
     }
 
+    /**
+     * Get the changelog table name.
+     *
+     * @return string|null The name of the changelog table; null if not defined.
+     */
     public function getChangelogTable()
     {
-        return ArrayUtil::get($this->getConfig(), 'changelog');
+        return ArrayUtil::get($this->getDatabaseConfig(), 'changelog');
     }
 
+    /**
+     * Check to see if the environment has been defined.
+     */
     protected function checkEnv()
     {
-        if (!file_exists($this->getApplication()->getEnvPath())) {
+        if (!file_exists($this->manager->getEnvironmentPath())) {
             throw new \RuntimeException("you are not in an initialized php-database-migration directory");
         }
     }
 
-    protected function init(InputInterface $input, OutputInterface $output, $env = null)
+    /**
+     * Initialise the environment by creating directories, retireving the configuration, and creating
+     * the configured PDO object.
+     *
+     * @param InputInterface $input
+     * @param OutputInterface $output
+     */
+    protected function init(InputInterface $input, OutputInterface $output)
     {
-        $configDirectory = $this->getApplication()->getEnvPath();
-        $configLocator = new ConfigLocator($configDirectory);
+        $envName = $input->getArgument('env');
+        $dbConnectionName = $input->getArgument('db');
 
-        if ($env === null) {
-            $env = $input->getArgument('env');
+        if (!file_exists($this->manager->getWorkingPath())) {
+            mkdir($this->manager->getWorkingPath(), 0777, true);
         }
 
-        $parser = $configLocator->locate($env);
+        if (!file_exists($this->manager->getEnvironmentPath())) {
+            mkdir($this->manager->getEnvironmentPath(), 0777, true);
+        }
 
-        $conf = $parser->parse();
+        if (!file_exists($this->manager->getMigrationPath($dbConnectionName))) {
+            mkdir($this->manager->getMigrationPath($dbConnectionName), 0777, true);
+        }
 
-        $this->config = $conf;
+        $configHandler = new PhpConfigHandler(
+            $this->manager->getConfigFilePath($envName)
+        );
 
-        $driver = ArrayUtil::get($conf['connection'], 'driver');
-        $port = ArrayUtil::get($conf['connection'], 'port');
-        $host = ArrayUtil::get($conf['connection'], 'host');
-        $dbname = ArrayUtil::get($conf['connection'], 'database');
-        $username = ArrayUtil::get($conf['connection'], 'username');
-        $password = ArrayUtil::get($conf['connection'], 'password');
-        $charset = ArrayUtil::get($conf['connection'], 'charset');
+        $config = $configHandler->load();
+
+        if (!array_key_exists($dbConnectionName, $config['databases'])) {
+            $didFind = implode(', ', array_keys($config['databases']));
+            $message = "Connection name '{$dbConnectionName}' not found in configuration, did find: {$didFind}";
+            $e = new \RuntimeException($message);
+            print $e->getTraceAsString();
+            throw $e;
+        }
+
+        $dbConfig = $config['databases'][$dbConnectionName];
+        $this->dbConfig = $dbConfig;
+
+        $driver = ArrayUtil::get($dbConfig, 'driver');
+        $port = ArrayUtil::get($dbConfig, 'port');
+        $host = ArrayUtil::get($dbConfig, 'host');
+        $dbname = ArrayUtil::get($dbConfig, 'database');
+        $username = ArrayUtil::get($dbConfig, 'username');
+        $password = ArrayUtil::get($dbConfig, 'password');
+        $charset = ArrayUtil::get($dbConfig, 'charset');
 
         $uri = $driver;
 
@@ -101,16 +149,22 @@ class AbstractEnvCommand extends AbstractCommand
     }
 
     /**
-     * @return array(Migration)
+     * Retrieve a list of the local migrations.
+     *
+     * @return array|Migration[] An array of migrations.
      */
     public function getLocalMigrations()
     {
-        $fileList = scandir($this->getMigrationDir());
+        $migrationPath = $this->manager->getMigrationPath(
+            $this->getDatabaseConfig('path')
+        );
+
+        $fileList = scandir($migrationPath);
         $fileList = ArrayUtil::filter($fileList);
 
         $migrations = array();
         foreach ($fileList as $file) {
-            $migration = Migration::createFromFile($file, $this->getMigrationDir());
+            $migration = Migration::createFromFile($file, $migrationPath);
             $migrations[$migration->getId()] = $migration;
         }
 
@@ -120,16 +174,24 @@ class AbstractEnvCommand extends AbstractCommand
     }
 
     /**
-     * @return array(Migration)
+     * Retrieve a list of the remote migrations.
+     *
+     * @return array|Migration[] An array of migrations.
      */
     public function getRemoteMigrations()
     {
+        $migrationPath = $this->manager->getMigrationPath(
+            $this->getDatabaseConfig('path')
+        );
+
         $migrations = array();
         $result = $this->getDb()->query("SELECT * FROM {$this->getChangelogTable()} ORDER BY id");
         if ($result) {
             foreach ($result as $row) {
-                $migration = Migration::createFromRow($row, $this->getMigrationDir());
-                $migrations[$migration->getId()] = $migration;
+                $migration = Migration::createFromRow($row, $migrationPath);
+                if ($migration !== null) {
+                    $migrations[$migration->getId()] = $migration;
+                }
             }
 
             ksort($migrations);
@@ -138,7 +200,9 @@ class AbstractEnvCommand extends AbstractCommand
     }
 
     /**
-     * @return array(Migration)
+     * Retrieve a list of all known migrations, local and remote.
+     *
+     * @return array|Migration[] An array of migrations.
      */
     public function getRemoteAndLocalMigrations()
     {
@@ -154,6 +218,11 @@ class AbstractEnvCommand extends AbstractCommand
         return $local;
     }
 
+    /**
+     * Retrieve a list of local migrations that haven't been run on the remote.
+     *
+     * @return array|Migration[] An array of migrations.
+     */
     public function getToUpMigrations()
     {
         $locales = $this->getLocalMigrations();
@@ -168,6 +237,11 @@ class AbstractEnvCommand extends AbstractCommand
         return $locales;
     }
 
+    /**
+     * Retrieve a list of migrations that have been run on the server most recently run first.
+     *
+     * @return array|Migration[] An array of migrations.
+     */
     public function getToDownMigrations()
     {
         $remotes = $this->getRemoteMigrations();
@@ -179,7 +253,11 @@ class AbstractEnvCommand extends AbstractCommand
         return $remotes;
     }
 
-
+    /**
+     * Save a migration's details to the database changelog table.
+     *
+     * @param Migration $migration The migration to record in the database.
+     */
     public function saveToChangelog(Migration $migration)
     {
         $appliedAt = date('Y-m-d H:i:s');
@@ -195,6 +273,11 @@ class AbstractEnvCommand extends AbstractCommand
         }
     }
 
+    /**
+     * Remove an entry from the database changelog table for the provided Migration.
+     *
+     * @param Migration $migration The migration to remove from the changelog table.
+     */
     public function removeFromChangelog(Migration $migration)
     {
         $sql = "DELETE FROM {$this->getChangelogTable()} WHERE id = {$migration->getId()}";
@@ -205,8 +288,10 @@ class AbstractEnvCommand extends AbstractCommand
     }
 
     /**
-     * @param Migration $migration
-     * @param bool      $changeLogOnly
+     * Run the Up portion of a Migration.
+     *
+     * @param Migration $migration The migration to migrate up.
+     * @param bool $changeLogOnly True if we want to only report that this migration happened; false otherwise.
      */
     public function executeUpMigration(Migration $migration, $changeLogOnly = false)
     {
@@ -237,8 +322,10 @@ class AbstractEnvCommand extends AbstractCommand
     }
 
     /**
-     * @param Migration $migration
-     * @param bool      $changeLogOnly
+     * Run the Down portion of a Migration.
+     *
+     * @param Migration $migration The migration to migrate down.
+     * @param bool $changeLogOnly True if we want to only report that this migration happened; false otherwise.
      */
     public function executeDownMigration(Migration $migration, $changeLogOnly = false)
     {
@@ -256,7 +343,7 @@ class AbstractEnvCommand extends AbstractCommand
                 }
                 $this->getDb()->rollBack();
                 throw new \RuntimeException(sprintf(
-                    "migration error, some SQL may be wrong\n\nid: %s\nfile: %s\n",
+                    "migration error, some SQL may be wrong\n\nid: %s\nfile: %s\n%s\n",
                     $migration->getId(),
                     $migration->getFile(),
                     $errorInfo
@@ -267,12 +354,17 @@ class AbstractEnvCommand extends AbstractCommand
         $this->getDb()->commit();
     }
 
+    /**
+     * Filter the migration to ensure we are only running the correct ones.
+     *
+     * @param InputInterface $input
+     * @param OutputInterface $output
+     * @return array|Migration[] The filtered migrations.
+     */
     protected function filterMigrationsToExecute(InputInterface $input, OutputInterface $output)
     {
-
         $down = false;
 
-        $toExecute = array();
         if (strpos($this->getName(), 'up') > 0) {
             $toExecute = $this->getToUpMigrations();
         } else {
