@@ -10,6 +10,7 @@ use Migrate\Command\InitCommand;
 use Migrate\Command\StatusCommand;
 use Migrate\Command\UpCommand;
 use Migrate\Config\ConfigHandlers\PhpConfigHandler;
+use Migrate\Utils\ArrayUtil;
 use Symfony\Component\Console\Application;
 
 /**
@@ -216,11 +217,11 @@ class Manager extends Application
             return null;
         }
 
-        if (!array_key_exists($connectionName, $this->environments[$environmentName])) {
+        if (!array_key_exists($connectionName, $this->environments[$environmentName]['databases'])) {
             return null;
         }
 
-        return $this->environments[$environmentName][$connectionName];
+        return $this->environments[$environmentName]['databases'][$connectionName];
     }
 
     /**
@@ -281,5 +282,43 @@ class Manager extends Application
         $this->add(new CreateDatabaseCommand());
         $this->add(new StatusCommand());
         $this->add(new InitCommand());
+    }
+
+    /**
+     * Get a PDO object configured to connect to the provided environment database.
+     *
+     * @param string $environmentName The name of the environment to use.
+     * @param string $connectionName The name of the database to use.
+     * @return \PDO The configured PDO object.
+     */
+    public function getPdo($environmentName, $connectionName)
+    {
+        $dbConfig = $this->getDatabaseConfig($environmentName, $connectionName);
+
+        $driver = ArrayUtil::get($dbConfig, 'driver');
+        $port = ArrayUtil::get($dbConfig, 'port');
+        $host = ArrayUtil::get($dbConfig, 'host');
+        $dbname = ArrayUtil::get($dbConfig, 'database');
+        $username = ArrayUtil::get($dbConfig, 'username');
+        $password = ArrayUtil::get($dbConfig, 'password');
+        $charset = ArrayUtil::get($dbConfig, 'charset');
+
+        $uri = $driver;
+
+        if ($driver == 'sqlite') {
+            $uri .= ":$dbname";
+        } else {
+            $uri .= ($dbname === null) ? '' : ":dbname=$dbname";
+            $uri .= ($host === null) ? '' : ";host=$host";
+            $uri .= ($port === null) ? '' : ";port=$port";
+            $uri .= ($charset === null) ? '' : ";charset=$charset";
+        }
+
+        return new \PDO(
+            $uri,
+            $username,
+            $password,
+            array()
+        );
     }
 }
