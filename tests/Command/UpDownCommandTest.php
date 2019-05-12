@@ -45,7 +45,7 @@ class UpDownCommandTest extends AbstractCommandTester
         $this->createMigration(
             $this->manager->getMigrationPath(),
             '1',
-            'SELECT 1',
+            'SELECT 1;',
             'DELETE FROM test WHERE id = 1;'
         );
 
@@ -201,13 +201,13 @@ EXPECTED;
 
         $expected =<<<EXPECTED
 connected
-+----+---------+---------------------+-------------+
-| id | version | applied at          | description |
-+----+---------+---------------------+-------------+
-| 0  |         |                     | migration   |
-| 1  |         | $currentDate | migration   |
-| 2  |         |                     | migration   |
-+----+---------+---------------------+-------------+
++----+---------+---------------------+-------------+----------+
+| id | version | applied at          | description | status   |
++----+---------+---------------------+-------------+----------+
+| 0  |         |                     | migration   | PENDING  |
+| 1  |         | $currentDate | migration   | MIGRATED |
+| 2  |         |                     | migration   | PENDING  |
++----+---------+---------------------+-------------+----------+
 
 EXPECTED;
 
@@ -269,13 +269,13 @@ EXPECTED;
 
         $expected =<<<'EXPECTED'
 connected
-+----+---------+---------------------+-------------+
-| id | version | applied at          | description |
-+----+---------+---------------------+-------------+
-| 0  |         | DATE_REGEX          | migration   |
-| 1  |         |                     | migration   |
-| 2  |         | DATE_REGEX          | migration   |
-+----+---------+---------------------+-------------+
++----+---------+---------------------+-------------+----------+
+| id | version | applied at          | description | status   |
++----+---------+---------------------+-------------+----------+
+| 0  |         | DATE_REGEX          | migration   | MIGRATED |
+| 1  |         |                     | migration   | PENDING  |
+| 2  |         | DATE_REGEX          | migration   | MIGRATED |
++----+---------+---------------------+-------------+----------+
 
 EXPECTED;
 
@@ -284,6 +284,155 @@ EXPECTED;
 
         $this->assertRegExp($pattern, $commandTester->getDisplay());
 
+    }
+
+    private function setupRemoteOnly()
+    {
+        // Migrate a few test migrations.
+        $command = $this->manager->find('migrate:up');
+        $commandTester = new CommandTester($command);
+
+        $commandTester->execute(array(
+            'command' => $command->getName(),
+            'env' => 'testing',
+            'db' => static::$testDatabaseConfig['database']
+        ));
+
+        // Setup a false migration.
+        $config = $this->manager->getDatabaseConfig('testing', static::$testDatabaseConfig['database']);
+
+        $appliedAt = date('Y-m-d H:i:s');
+
+        $pdo = $this->manager->getPdo('testing', $config['database']);
+
+        // Add a migration entry to the database simulating a remote migration we don't know about.
+        $pdo->exec("
+            INSERT INTO {$config['changelog']}
+                (id, version, applied_at, description)
+            VALUES
+                (3, null, '{$appliedAt}', 'remote only migration')
+        ");
+    }
+
+    public function testRemoteOnlyDefault()
+    {
+        $this->setupRemoteOnly();
+
+        $command = $this->manager->find('migrate:down');
+        $commandTester = new CommandTester($command);
+
+        $userInputStream = InputStreamUtil::type("yes\n");
+        $command->getHelper('question')->setInputStream($userInputStream);
+
+        // When not providing a --remote-only option we should 'abort' by default.
+
+        $this->expectException('RuntimeException');
+        $this->expectExceptionMessage('Cannot run remote only migration');
+
+        $commandTester->execute(array(
+            'command' => $command->getName(),
+            'env' => 'testing',
+            'db' => static::$testDatabaseConfig['database'],
+            '--to' => 0
+        ));
+    }
+
+    public function testRemoteOnlyAbort()
+    {
+        $this->setupRemoteOnly();
+
+        $command = $this->manager->find('migrate:down');
+        $commandTester = new CommandTester($command);
+
+        $userInputStream = InputStreamUtil::type("yes\n");
+        $command->getHelper('question')->setInputStream($userInputStream);
+
+        $this->expectException('RuntimeException');
+        $this->expectExceptionMessage('Cannot run remote only migration');
+
+        $commandTester->execute(array(
+            'command' => $command->getName(),
+            'env' => 'testing',
+            'db' => static::$testDatabaseConfig['database'],
+            '--remote-only' => 'abort',
+            '--to' => 0
+        ));
+    }
+
+    public function testRemoteOnlySkip()
+    {
+        $this->setupRemoteOnly();
+
+        $command = $this->manager->find('migrate:down');
+        $commandTester = new CommandTester($command);
+
+        $userInputStream = InputStreamUtil::type("yes\n");
+        $command->getHelper('question')->setInputStream($userInputStream);
+
+        $commandTester->execute(array(
+            'command' => $command->getName(),
+            'env' => 'testing',
+            'db' => static::$testDatabaseConfig['database'],
+            '--remote-only' => 'skip',
+            '--to' => 0
+        ));
+
+        $command = $this->manager->find('migrate:status');
+        $commandTester = new CommandTester($command);
+
+        $commandTester->execute(array(
+            'command' => $command->getName(),
+            'env' => 'testing',
+            'db' => static::$testDatabaseConfig['database']
+        ));
+
+        $currentTime = time();
+        $validDates = array();
+        foreach (range(-1, 1) as $i) {
+            $validDates[] = date('Y-m-d H:i:s', $currentTime + $i);
+        }
+        $dateRegex = '(' . implode('|', $validDates) . ') *';
+
+        $expected =<<<'EXPECTED'
+connected
++----+---------+---------------------+-----------------------+-------------+
+| id | version | applied at          | description           | status      |
++----+---------+---------------------+-----------------------+-------------+
+| 0  |         |                     | migration             | PENDING     |
+| 1  |         |                     | migration             | PENDING     |
+| 2  |         |                     | migration             | PENDING     |
+| 3  |         | DATE_REGEX          | remote only migration | REMOTE ONLY |
++----+---------+---------------------+-----------------------+-------------+
+
+EXPECTED;
+
+        $pattern = '/^' . preg_quote($expected, '/') . '$/';
+        $pattern = preg_replace('/DATE_REGEX */', $dateRegex, $pattern);
+
+        $this->assertRegExp($pattern, $commandTester->getDisplay());
+    }
+
+    public function testRemoteOnlyUpto()
+    {
+        $this->setupRemoteOnly();
+
+        $command = $this->manager->find('migrate:down');
+        $commandTester = new CommandTester($command);
+
+        $userInputStream = InputStreamUtil::type("yes\n");
+        $command->getHelper('question')->setInputStream($userInputStream);
+
+        $commandTester->execute(array(
+            'command' => $command->getName(),
+            'env' => 'testing',
+            'db' => static::$testDatabaseConfig['database'],
+            '--remote-only' => 'upto',
+            '--to' => 0
+        ));
+
+        $pattern = '/your database is already up to date/';
+
+        $this->assertRegExp($pattern, $commandTester->getDisplay());
     }
 
     public function testUpTo()
@@ -322,13 +471,13 @@ EXPECTED;
 
         $expected =<<<EXPECTED
 connected
-+----+---------+---------------------+-------------+
-| id | version | applied at          | description |
-+----+---------+---------------------+-------------+
-| 0  |         | $currentDate | migration   |
-| 1  |         | $currentDate | migration   |
-| 2  |         |                     | migration   |
-+----+---------+---------------------+-------------+
++----+---------+---------------------+-------------+----------+
+| id | version | applied at          | description | status   |
++----+---------+---------------------+-------------+----------+
+| 0  |         | $currentDate | migration   | MIGRATED |
+| 1  |         | $currentDate | migration   | MIGRATED |
+| 2  |         |                     | migration   | PENDING  |
++----+---------+---------------------+-------------+----------+
 
 EXPECTED;
 
@@ -384,13 +533,13 @@ EXPECTED;
 
         $expected =<<<EXPECTED
 connected
-+----+---------+---------------------+-------------+
-| id | version | applied at          | description |
-+----+---------+---------------------+-------------+
-| 0  |         | $currentDate | migration   |
-| 1  |         |                     | migration   |
-| 2  |         |                     | migration   |
-+----+---------+---------------------+-------------+
++----+---------+---------------------+-------------+----------+
+| id | version | applied at          | description | status   |
++----+---------+---------------------+-------------+----------+
+| 0  |         | $currentDate | migration   | MIGRATED |
+| 1  |         |                     | migration   | PENDING  |
+| 2  |         |                     | migration   | PENDING  |
++----+---------+---------------------+-------------+----------+
 
 EXPECTED;
 

@@ -3,7 +3,6 @@
 namespace Migrate\Command;
 
 use Migrate\Config\ConfigHandlers\PhpConfigHandler;
-use Migrate\Manager;
 use Migrate\Migration;
 use Migrate\Utils\ArrayUtil;
 use Symfony\Component\Console\Input\InputInterface;
@@ -363,46 +362,131 @@ abstract class AbstractEnvCommand extends AbstractCommand
      */
     protected function filterMigrationsToExecute(InputInterface $input, OutputInterface $output)
     {
-        $down = false;
+        $isMigratingDown = strpos($this->getName(), ':down') > 0;
+        $handleRemoteOnly = $input->hasOption('remote-only') ? $input->getOption('remote-only') : null;
 
-        if (strpos($this->getName(), 'up') > 0) {
-            $toExecute = $this->getToUpMigrations();
-        } else {
-            $down = true;
+        if ($isMigratingDown) {
             $toExecute = $this->getToDownMigrations();
+        } else {
+            $toExecute = $this->getToUpMigrations();
         }
 
-        $only = $input->getOption('only');
-        if ($only !== null) {
-            if (! array_key_exists($only, $toExecute)) {
-                throw new \RuntimeException("Impossible to execute migration $only!");
-            }
-            $theMigration = $toExecute[$only];
-            $toExecute = array($theMigration->getId() => $theMigration);
+        // Remove any migrations that were run on the database but we don't have locally.
+        if ($handleRemoteOnly === 'skip') {
+            $toExecute = $this->filterRemoteOnlyMigrations($toExecute);
         }
 
-        $to = $input->getOption('to');
-        if ($to !== null) {
-            if (! array_key_exists($to, $toExecute)) {
-                throw new \RuntimeException("Target migration $to does not exist or has already been executed/downed!");
-            }
+        if ($input->getOption('only') !== null) {
+            $toExecute = $this->filterAllExceptMigration($toExecute, $input->getOption('only'));
+        } else if ($input->getOption('to') !== null) {
+            $toExecute = $this->filterAllAfterMigration($toExecute, $input->getOption('to'));
+        }
 
-            $temp = $toExecute;
-            $toExecute = array();
-            foreach ($temp as $migration) {
-                $toExecute[$migration->getId()] = $migration;
-                if ($migration->getId() == $to) {
-                    break;
-                }
+        if ($handleRemoteOnly === 'upto') {
+            $toExecute = $this->filterAllAfterFirstRemoteOnlyMigration($toExecute);
+        }
+
+        // We have performed all the filtering and have our final set of migrations to run.
+        // If we are migrating down without specifying --only or --to then limit the migrations to only 1.
+        if ($isMigratingDown && $input->getOption('only') === null && $input->getOption('to') === null) {
+            $firstMigration = array_shift($toExecute);
+            $toExecute = array($firstMigration->getId() => $firstMigration);
+        }
+
+        // Finally, ensure that the $toExecute migration list contains no remote only migrations.
+        // If there are any left at this point, then this qualifies as the 'abort' condition.
+        foreach ($toExecute as $migration) {
+            if ($migration->isRemoteOnly()) {
+                throw new \RuntimeException(
+                    "Cannot run remote only migration {$migration->getId()}: {$migration->getDescription()}"
+                );
             }
-        } elseif ($down && count($toExecute) > 1) {
-            // WARNING DOWN SPECIAL TREATMENT
-            // we dont want all the database to be downed because
-            // of a bad command!
-            $theMigration = array_shift($toExecute);
-            $toExecute = array($theMigration->getId() => $theMigration);
         }
 
         return $toExecute;
+    }
+
+    /**
+     * Filter all migrations that don't match the $onlyId.
+     *
+     * @param Migration[] $migrations The migrations to filter.
+     * @param int $onlyId The ID of the migration to keep.
+     * @return array An array containing the $onlyId migration.
+     */
+    private function filterAllExceptMigration($migrations, $onlyId)
+    {
+        if (!array_key_exists($onlyId, $migrations)) {
+            throw new \RuntimeException("Impossible to execute migration {$onlyId}!");
+        }
+
+        $theMigration = $migrations[$onlyId];
+
+        if ($theMigration->isRemoteOnly()) {
+            throw new \RuntimeException("The migration {$onlyId} is remote only and cannot be run!");
+        }
+
+        return array($onlyId => $theMigration);
+    }
+
+    /**
+     * Filter all migrations after $toId.
+     *
+     * @param Migration[] $migrations The migrations to filter.
+     * @param int $afterId The migration ID to filter after.
+     * @return array An array of filtered migrations.
+     */
+    private function filterAllAfterMigration($migrations, $afterId)
+    {
+        if (!array_key_exists($afterId, $migrations)) {
+            throw new \RuntimeException(
+                "Target migration {$afterId} does not exist or has already been executed/downed!"
+            );
+        }
+
+        $filteredToExecute = array();
+
+        foreach ($migrations as $migration) {
+            $filteredToExecute[$migration->getId()] = $migration;
+
+            if ($migration->getId() === $afterId) {
+                break;
+            }
+        }
+
+        return $filteredToExecute;
+    }
+
+    /**
+     * Filter all remote only migrations.
+     *
+     * @param Migration[] $migrations The migrations to filter.
+     * @return array An array of filtered migrations.
+     */
+    private function filterRemoteOnlyMigrations($migrations)
+    {
+        return array_filter($migrations, static function (Migration $migration) {
+            return !$migration->isRemoteOnly();
+        });
+    }
+
+    /**
+     * Filter all migrations after the first remote only migration.
+     *
+     * @param Migration[] $migrations The migrations to filter.
+     * @return array An array of filtered migrations.
+     */
+    private function filterAllAfterFirstRemoteOnlyMigration($migrations)
+    {
+        $filteredMigrations = array();
+
+        foreach ($migrations as $migrationId => $migration) {
+            if ($migration->isRemoteOnly()) {
+                break;
+            }
+
+            $filteredMigrations[$migrationId] = $migration;
+        }
+
+        return $filteredMigrations;
     }
 }

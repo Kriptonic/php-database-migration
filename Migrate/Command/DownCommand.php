@@ -26,7 +26,7 @@ class DownCommand extends AbstractEnvCommand
     {
         $this
             ->setName('migrate:down')
-            ->setDescription('Rollback all waiting migration down to [to] option if precised')
+            ->setDescription('Rollback all migrations down to [to] option if provided')
             ->addArgument(
                 'env',
                 InputArgument::REQUIRED,
@@ -54,11 +54,27 @@ class DownCommand extends AbstractEnvCommand
                 null,
                 InputOption::VALUE_NONE,
                 'Mark as applied without executing SQL '
+            )
+            ->addOption(
+                'remote-only',
+                null,
+                InputOption::VALUE_REQUIRED,
+                "How to handle remote migrations that aren't local",
+                'abort'
             );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
+        if ($input->hasOption('remote-only')) {
+            $remoteOnlyChoices = array('abort', 'skip', 'upto');
+            if (!in_array($input->getOption('remote-only'), $remoteOnlyChoices)) {
+                throw new \RuntimeException(
+                    'Invalid --remote-only value, use one of: ' . implode(', ', $remoteOnlyChoices)
+                );
+            }
+        }
+
         $this->checkEnv();
 
         $this->init($input, $output);
