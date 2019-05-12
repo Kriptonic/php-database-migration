@@ -22,6 +22,7 @@ class Migration
     private $version;
     private $sqlUp;
     private $sqlDown;
+    private $isRemoteOnly = false;
 
     /**
      * @return mixed
@@ -136,6 +137,43 @@ class Migration
     }
 
     /**
+     * @return bool
+     */
+    public function isRemoteOnly()
+    {
+        return $this->isRemoteOnly;
+    }
+
+    /**
+     * @param bool $isRemoteOnly
+     */
+    public function setIsRemoteOnly($isRemoteOnly)
+    {
+        $this->isRemoteOnly = $isRemoteOnly;
+    }
+
+    /**
+     * Get the status of this migration.
+     *
+     * One of the following status can be returned:
+     * 'PENDING' this is a local migration not on the remote database.
+     * 'MIGRATED' is for a local migration that is found on the remote.
+     * 'REMOTE ONLY' returned when a remote migration cannot be found locally.
+     *
+     * @return string The migration status.
+     */
+    public function getStatus()
+    {
+        if ($this->isRemoteOnly) {
+            return 'REMOTE ONLY';
+        } elseif ($this->getAppliedAt() !== null) {
+            return 'MIGRATED';
+        } else {
+            return 'PENDING';
+        }
+    }
+
+    /**
      * Create a migration object from a file.
      *
      * @param string $filename The name of the migration file to use.
@@ -178,13 +216,11 @@ class Migration
         $filename = $migration->getId() . '_' . $slugger->slugify($migration->getDescription()) . '.sql';
         $migration->setFile($filename);
 
-        // TODO: Add better error handling for these cases - this would likely be a normal occurrence when working in
-        //       a multi-user version-controlled environment.
-        if (!file_exists($migrationDir . '/' . $filename)) {
-            return null;
+        if (file_exists($migrationDir . '/' . $filename)) {
+            $migration->load($migrationDir);
+        } else {
+            $migration->setIsRemoteOnly(true);
         }
-
-        $migration->load($migrationDir);
 
         return $migration;
     }
@@ -200,7 +236,8 @@ class Migration
             $this->getId(),
             $this->getVersion(),
             $this->getAppliedAt(),
-            $this->getDescription()
+            $this->getDescription(),
+            $this->getStatus()
         );
     }
 
