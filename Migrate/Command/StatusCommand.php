@@ -41,7 +41,7 @@ class StatusCommand extends AbstractEnvCommand
         $this->init($input, $output);
 
         $table = new Table($output);
-        $table->setHeaders(array('id', 'version', 'applied at', 'description'));
+        $table->setHeaders(array('id', 'version', 'applied at', 'description', 'status'));
 
         $migrations = $this->getRemoteAndLocalMigrations();
 

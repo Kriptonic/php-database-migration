@@ -30,6 +30,7 @@ abstract class AbstractCommandTester extends \PHPUnit_Framework_TestCase
         'charset' => null,
         'username' => null,
         'password' => null,
+        'changelog' => 'changelog',
         'path' => 'test.sqlite',
     );
 
@@ -95,7 +96,7 @@ abstract class AbstractCommandTester extends \PHPUnit_Framework_TestCase
         $inputStream = InputStreamUtil::fromArray(array(
             static::$testDatabaseConfig['driver'],
             static::$testDatabaseConfig['database'],
-            '', // Changelog table name (use default)
+            static::$testDatabaseConfig['changelog'],
             '', // Connection name (use default)
             '', // Migration path (use default)
         ));
